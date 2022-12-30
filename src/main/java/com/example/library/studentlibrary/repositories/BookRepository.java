@@ -1,6 +1,7 @@
 package com.example.library.studentlibrary.repositories;
 
 import com.example.library.studentlibrary.models.Book;
+import com.example.library.studentlibrary.models.Genre;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
