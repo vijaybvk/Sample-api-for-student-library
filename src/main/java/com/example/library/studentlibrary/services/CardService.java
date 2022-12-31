@@ -18,8 +18,10 @@ public class CardService {
         Card card = new Card();
         card.setStudent(student);
         student.setCard(card);
-        //link student with a new card
+        //assigning student with a new card
         return card;
+
+
     }
 
     public void deactivateCard(int student_id){
