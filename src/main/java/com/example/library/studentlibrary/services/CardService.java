@@ -18,7 +18,8 @@ public class CardService {
         Card card = new Card();
         card.setStudent(student);
         student.setCard(card);
-        //assigning student with a new card
+        cardRepository3.save(card);
+        //link student with a new card
         return card;
 
 

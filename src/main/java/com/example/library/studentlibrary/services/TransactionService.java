@@ -53,51 +53,46 @@ public class TransactionService {
             Optional<Card> card=cardRepository5.findById(cardId);
             if(card.isPresent() && card.get().getCardStatus()==CardStatus.ACTIVATED){
                 if(card.get().getBooks().size()<max_allowed_books){
-                    Transaction transaction=Transaction.builder().book(book.get()).card(card.get()).
-                            transactionStatus(TransactionStatus.SUCCESSFUL).isIssueOperation(true).transactionDate(new Date()).build();
-                    List<Book> books=card.get().getBooks();
-                    books.add(book.get());
-                    card.get(   ).setBooks(books);
-                    cardRepository5.save(card.get());
+                    Transaction transaction=Transaction.builder().card(card.get()).book(book.get())
+                            .transactionStatus(TransactionStatus.SUCCESSFUL)
+                            .isIssueOperation(true).transactionDate(new Date()).build();
+
                     List<Transaction> transactions=book.get().getTransactions();
                     transactions.add(transaction);
+                    book.get().setCard(card.get());
                     book.get().setAvailable(false);
                     book.get().setTransactions(transactions);
+
+                    List<Book> books=card.get().getBooks();
+                    books.add(book.get());
+                    card.get().setBooks(books);
+
+                    transaction.setCard(card.get());
+
+                    bookRepository5.updateBook(book.get());
+
                     transactionId=transaction.getTransactionId();
-                    bookRepository5.save(book.get());
                     transactionRepository5.save(transaction);
                 }
                 else{
                     Transaction transaction=Transaction.builder().transactionDate(new Date()).isIssueOperation(true).book(book.get())
                             .card(card.get()).transactionStatus(TransactionStatus.FAILED).build();
                     transactionRepository5.save(transaction);
-                    try {
-                        throw new Exception("Book limit has reached for this card");
-                    }catch (Exception e){
-                        System.out.println(e.getMessage());
-                    }
+                    throw new Exception("Book limit has reached for this card");
                 }
             }
             else{
                 Transaction transaction=Transaction.builder().transactionDate(new Date()).book(book.get()).isIssueOperation(true)
                         .transactionStatus(TransactionStatus.FAILED).build();
                 transactionRepository5.save(transaction);
-                try{
-                    throw new Exception("Card is invalid");
-                }catch (Exception e){
-                    System.out.println(e.getMessage());
-                }
+                throw new Exception("Card is invalid");
             }
         }
         else{
             Transaction transaction=Transaction.builder().transactionDate(new Date()).isIssueOperation(true)
                     .transactionStatus(TransactionStatus.FAILED).build();
             transactionRepository5.save(transaction);
-            try{
-                throw new Exception("Book is either unavailable or not present");
-            }catch (Exception e){
-                System.out.println(e.getMessage());
-            }
+            throw new Exception("Book is either unavailable or not present");
         }
 
         return transactionId; //return transactionId instead
@@ -107,58 +102,41 @@ public class TransactionService {
 
         List<Transaction> transactions = transactionRepository5.find(cardId, bookId,TransactionStatus.SUCCESSFUL, true);
         Transaction transaction = transactions.get(transactions.size() - 1);
+        Date issuedDate=transaction.getTransactionDate();
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(issuedDate);
+
+        // manipulate date
+        calendar.add(Calendar.DATE, getMax_allowed_days);
+        Date allowedDate = calendar.getTime();
+        Date currentDate=new Date();
+        long time_difference = currentDate.getTime() - allowedDate.getTime();
+        // Calculate time difference in days
+        long days_difference = (time_difference / (1000*60*60*24)) % 365;
+        int fine=(int)days_difference*fine_per_day;
+
+        Card card=cardRepository5.findById(cardId).get();
+        Book book=bookRepository5.findById(bookId).get();
+
+        List<Book> books=card.getBooks();
+        books.remove(book);
+        card.setBooks(books);
+
+        book.setAvailable(true);
+        book.setCard(null);
 
         //for the given transaction calculate the fine amount considering the book has been returned exactly when this function is called
-        Book book = transaction.getBook();
-        Card card = transaction.getCard();
-        Date issueDate = transaction.getTransactionDate();
-        Date currentDate = new Date();
-        int beforeFine = transaction.getFineAmount();
-
-
-        //Calculate difference between two days
-
-        long dateBeforeInMs = issueDate.getTime();
-        long dateAfterInMs = currentDate.getTime();
-
-        long timeDiff = Math.abs(dateAfterInMs - dateBeforeInMs);
-
-        long daysDiff = TimeUnit.DAYS.convert(timeDiff, TimeUnit.MILLISECONDS);
-        int delay = getMax_allowed_days - (int)daysDiff;
-
-
-        //if book returned after 15 days --> no of delayDay * fine_per_day
-        if(delay < 0){
-            beforeFine += delay * fine_per_day;
-        }
-
         //make the book available for other users
-        book.setAvailable(true);
-
         //make a new transaction for return book which contains the fine amount as well
 
-        Transaction returnBookTransaction  = null;
-        returnBookTransaction = Transaction.builder()
-                .transactionDate(new Date())
-                .transactionStatus(TransactionStatus.SUCCESSFUL)
-                .fineAmount(beforeFine)
-                .book(book)
-                .card(card)
-                .isIssueOperation(false)
-                .build();
+        Transaction returnBookTransaction  = Transaction.builder().transactionDate(new Date()).book(book).card(card)
+                .transactionDate(currentDate).fineAmount(fine).transactionStatus(TransactionStatus.SUCCESSFUL).isIssueOperation(false).build();
 
-        List<Book> previousBooks = card.getBooks();
-        previousBooks.remove(book);
-        card.setBooks(previousBooks);
-        card.setUpdatedOn(new Date());
+        List<Transaction> transactionsList=book.getTransactions();
+        transactionsList.add(returnBookTransaction);
+        book.setTransactions(transactionsList);
 
-        book.setCard(null);
-        List<Transaction> previousTransactions = book.getTransactions();
-        previousTransactions.add(transaction);
-        book.setTransactions(previousTransactions);
         bookRepository5.updateBook(book);
-
-
         transactionRepository5.save(returnBookTransaction);
         return returnBookTransaction; //return the transaction after updating all details
     }
