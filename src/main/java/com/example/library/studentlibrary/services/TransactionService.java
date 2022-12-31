@@ -102,42 +102,51 @@ public class TransactionService {
 
         List<Transaction> transactions = transactionRepository5.find(cardId, bookId,TransactionStatus.SUCCESSFUL, true);
         Transaction transaction = transactions.get(transactions.size() - 1);
-        Date issuedDate=transaction.getTransactionDate();
-        Calendar calendar = Calendar.getInstance();
-        calendar.setTime(issuedDate);
 
-        // manipulate date
-        calendar.add(Calendar.DATE, getMax_allowed_days);
-        Date allowedDate = calendar.getTime();
-        Date currentDate=new Date();
-        long time_difference = currentDate.getTime() - allowedDate.getTime();
-        // Calculate time difference in days
-        long days_difference = (time_difference / (1000*60*60*24)) % 365;
-        int fine=(int)days_difference*fine_per_day;
+        Book book = bookRepository5.findById(bookId).get();
+        Card card = cardRepository5.findById(cardId).get() ;
 
-        Card card=cardRepository5.findById(cardId).get();
-        Book book=bookRepository5.findById(bookId).get();
+        Transaction returnTransaction = new Transaction() ;
+        returnTransaction.setBook(book);
+        returnTransaction.setCard(card);
+        returnTransaction.setIssueOperation(false);
+        returnTransaction.setTransactionStatus(TransactionStatus.SUCCESSFUL);
 
-        List<Book> books=card.getBooks();
-        books.remove(book);
-        card.setBooks(books);
+        Date issueDate = transaction.getTransactionDate();
+        Date returnDate = new Date();
 
+        long d1 = issueDate.getTime();
+        long d2 = returnDate.getTime();
+
+        long timeDiff = Math.abs(d2 - d1);
+
+        long daysDiff = TimeUnit.DAYS.convert(timeDiff, TimeUnit.MILLISECONDS);
+
+        int delay = (int)daysDiff - getMax_allowed_days;
+        int fine =0;
+        if(delay > 0)
+        {
+            fine = delay*fine_per_day;
+        }
+        returnTransaction.setFineAmount(fine);
         book.setAvailable(true);
-        book.setCard(null);
+
+        List<Book> booklist = card.getBooks();
+        for(Book b:booklist)
+        {
+            if(b.getId()== bookId)
+                booklist.remove(b) ;
+            break ;
+        }
+
+        transactionRepository5.save(returnTransaction);
+
 
         //for the given transaction calculate the fine amount considering the book has been returned exactly when this function is called
         //make the book available for other users
         //make a new transaction for return book which contains the fine amount as well
 
-        Transaction returnBookTransaction  = Transaction.builder().transactionDate(new Date()).book(book).card(card)
-                .transactionDate(currentDate).fineAmount(fine).transactionStatus(TransactionStatus.SUCCESSFUL).isIssueOperation(false).build();
-
-        List<Transaction> transactionsList=book.getTransactions();
-        transactionsList.add(returnBookTransaction);
-        book.setTransactions(transactionsList);
-
-        bookRepository5.updateBook(book);
-        transactionRepository5.save(returnBookTransaction);
+        Transaction returnBookTransaction  = returnTransaction;
         return returnBookTransaction; //return the transaction after updating all details
     }
 }
