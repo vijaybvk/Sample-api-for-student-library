@@ -106,46 +106,59 @@ public class TransactionService {
     public Transaction returnBook(int cardId, int bookId) throws Exception{
 
         List<Transaction> transactions = transactionRepository5.find(cardId, bookId,TransactionStatus.SUCCESSFUL, true);
-        Transaction transaction=null;
-        try {
-            transaction = transactions.get(transactions.size() - 1);
-        }catch (Exception e){
-            System.out.println(e.getMessage());
-        }
-        Date issuedDate=transaction.getTransactionDate();
-        Calendar cal = Calendar.getInstance();
-        cal.setTime(issuedDate);
-
-        // manipulate date
-        cal.add(Calendar.DATE, getMax_allowed_days);
-        Date allowedDate = cal.getTime();
-        Date currentDate=new Date();
-        long time_difference = currentDate.getTime() - allowedDate.getTime();
-        // Calculate time difference in days
-        long days_difference = (time_difference / (1000*60*60*24)) % 365;
-        int fine=(int)days_difference*fine_per_day;
-
-        Card card=cardRepository5.findById(cardId).get();
-        Book book=bookRepository5.findById(bookId).get();
-
-        List<Book> books=card.getBooks();
-        books.remove(book);
-        card.setBooks(books);
-        cardRepository5.save(card);
-
-        book.setAvailable(true);
+        Transaction transaction = transactions.get(transactions.size() - 1);
 
         //for the given transaction calculate the fine amount considering the book has been returned exactly when this function is called
+        Book book = transaction.getBook();
+        Card card = transaction.getCard();
+        Date issueDate = transaction.getTransactionDate();
+        Date currentDate = new Date();
+        int beforeFine = transaction.getFineAmount();
+
+
+        //Calculate difference between two days
+
+        long dateBeforeInMs = issueDate.getTime();
+        long dateAfterInMs = currentDate.getTime();
+
+        long timeDiff = Math.abs(dateAfterInMs - dateBeforeInMs);
+
+        long daysDiff = TimeUnit.DAYS.convert(timeDiff, TimeUnit.MILLISECONDS);
+        int delay = getMax_allowed_days - (int)daysDiff;
+
+
+        //if book returned after 15 days --> no of delayDay * fine_per_day
+        if(delay < 0){
+            beforeFine += delay * fine_per_day;
+        }
+
         //make the book available for other users
+        book.setAvailable(true);
+
         //make a new transaction for return book which contains the fine amount as well
 
-        Transaction returnBookTransaction  = Transaction.builder().transactionDate(new Date()).book(book).card(card)
-                .transactionDate(currentDate).fineAmount(fine).transactionStatus(TransactionStatus.SUCCESSFUL).isIssueOperation(false).build();
+        Transaction returnBookTransaction  = null;
+        returnBookTransaction = Transaction.builder()
+                .transactionDate(new Date())
+                .transactionStatus(TransactionStatus.SUCCESSFUL)
+                .fineAmount(beforeFine)
+                .book(book)
+                .card(card)
+                .isIssueOperation(false)
+                .build();
 
-        List<Transaction> transactionsList=book.getTransactions();
-        transactionsList.add(returnBookTransaction);
-        book.setTransactions(transactionsList);
-        bookRepository5.save(book);
+        List<Book> previousBooks = card.getBooks();
+        previousBooks.remove(book);
+        card.setBooks(previousBooks);
+        card.setUpdatedOn(new Date());
+
+        book.setCard(null);
+        List<Transaction> previousTransactions = book.getTransactions();
+        previousTransactions.add(transaction);
+        book.setTransactions(previousTransactions);
+        bookRepository5.updateBook(book);
+
+
         transactionRepository5.save(returnBookTransaction);
         return returnBookTransaction; //return the transaction after updating all details
     }
