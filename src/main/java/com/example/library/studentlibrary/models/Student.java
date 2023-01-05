@@ -31,15 +31,6 @@ public class Student {
 
     public Student() {
     }
-
-    // alter table student add foreign key constraint card references Card(id)
-
-    @OneToOne
-    @JoinColumn   // join this column to the primary key of Card table
-    @JsonIgnoreProperties("student")
-    private Card card;
-
-
     @CreationTimestamp
     @Temporal(TemporalType.TIMESTAMP)
     private Date createdOn;
