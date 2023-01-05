@@ -20,7 +20,9 @@ public interface StudentRepository extends JpaRepository<Student, Integer> {
     int updateStudentDetails(Student std);
 
 
-
+    @Modifying
+    @Query("delete from Student s where s.id =:id")
+    void deleteCustom(int id);
 
     Student findByEmailId(String email);
 }
